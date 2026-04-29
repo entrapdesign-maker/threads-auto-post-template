@@ -1,0 +1,50 @@
+name: Generate Drafts
+
+on:
+  schedule:
+    # 毎週日曜 18:00 JST (= 09:00 UTC) に1週間分のドラフトを生成
+    - cron: "0 9 * * 0"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "生成する日数 (デフォルト: 7)"
+        required: false
+        default: "7"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate drafts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DAYS: ${{ github.event.inputs.days || '7' }}
+        run: python scripts/generate_drafts.py
+
+      - name: Commit drafts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add drafts/
+          if git diff --cached --quiet; then
+            echo "No new drafts to commit"
+          else
+            git commit -m "chore(drafts): auto-generate weekly drafts"
+            git push
+          fi

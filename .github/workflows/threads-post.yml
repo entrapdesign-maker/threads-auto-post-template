@@ -1,0 +1,42 @@
+name: Threads Post (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: "投稿本文 (改行は \\n)"
+        required: true
+        type: string
+      reply_text:
+        description: "ツリー返信用の続き本文 (任意)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Post text
+        env:
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          POST_TEXT: ${{ github.event.inputs.text }}
+          POST_REPLY_TEXT: ${{ github.event.inputs.reply_text }}
+        run: python scripts/post_manual.py
