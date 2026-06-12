@@ -16,9 +16,18 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 
 from agents import common, proofreader, research, writer
+
+
+def _pace(label: str) -> None:
+    """次の段階の前に間隔を空け、1分あたりの入力トークン上限(429)を避ける。"""
+    secs = common.STAGE_PACING_SECONDS
+    if secs > 0:
+        print(f"... レート上限回避のため {secs}秒待機 ({label}の前)")
+        time.sleep(secs)
 
 
 def generate_for_date(client, date_str: str) -> bool:
@@ -31,8 +40,10 @@ def generate_for_date(client, date_str: str) -> bool:
     # P: リサーチ
     ideas = research.run(client, date_str)["ideas"]
     # D: 作成
+    _pace("作成")
     drafts_by_slot = writer.run(client, ideas)
     # D: 校正
+    _pace("校正")
     drafts_by_slot = proofreader.run(client, drafts_by_slot)
 
     posts = []

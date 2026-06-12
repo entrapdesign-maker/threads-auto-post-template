@@ -34,11 +34,20 @@ REPLIES_PER_POST = 4
 DEFAULT_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 
+# レート上限(429)に当たったとき、SDKが retry-after に従って自動リトライする回数。
+# 無料/低ティア(例: 30,000 input tokens/分)でも通るよう多めにする。
+MAX_RETRIES = int(os.environ.get("ANTHROPIC_MAX_RETRIES", "8"))
+
+# 各エージェント(リサーチ→作成→校正)の間に空ける秒数。
+# 1分あたりの入力トークン上限をまたいで処理を分散させ、429を避ける。
+STAGE_PACING_SECONDS = int(os.environ.get("STAGE_PACING_SECONDS", "30"))
+
+
 def get_client() -> anthropic.Anthropic:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY が設定されていません")
-    return anthropic.Anthropic(api_key=api_key)
+    return anthropic.Anthropic(api_key=api_key, max_retries=MAX_RETRIES)
 
 
 def collect_text(message) -> str:

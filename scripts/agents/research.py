@@ -17,7 +17,8 @@ import re
 from . import common
 
 # Anthropic サーバーサイドの web search ツール (動的フィルタリング対応版)。
-WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
+# max_uses で検索回数を抑え、1リクエストの入力トークン肥大(=レート上限超過)を防ぐ。
+WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
 
 _SYSTEM = """あなたはThreads運用のリサーチャーです。
 指定された分野について、Web検索で「いま話題になっていること・最新の事実・競合がよく語る切り口」を調べ、
@@ -68,7 +69,7 @@ def _run_with_search(client, user_prompt: str) -> str:
     """web search ツールを有効にして実行。pause_turn を継いで最終テキストを得る。"""
     messages = [{"role": "user", "content": user_prompt}]
     text = ""
-    for _ in range(6):  # server tool ループの継続上限
+    for _ in range(4):  # server tool ループの継続上限 (入力トークン肥大を抑える)
         msg = client.messages.create(
             model=common.DEFAULT_MODEL,
             max_tokens=2000,
