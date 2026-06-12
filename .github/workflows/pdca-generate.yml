@@ -1,15 +1,16 @@
-name: Generate Drafts
+name: PDCA Generate
 
+# P→D の管理エージェント。リサーチ→作成→校正で当日の4枠×5ツリーを生成する。
 on:
   schedule:
-    # 毎週日曜 18:00 JST (= 09:00 UTC) に1週間分のドラフトを生成
-    - cron: "0 9 * * 0"
+    # 毎日 05:00 JST (= 20:00 UTC) に当日分のドラフトを生成 (7:00投稿の前)
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       days:
-        description: "生成する日数 (デフォルト: 7)"
+        description: "生成する日数 (デフォルト: 1 = 当日のみ)"
         required: false
-        default: "7"
+        default: "1"
 
 permissions:
   contents: write
@@ -31,20 +32,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate drafts
+      - name: Run PDCA generate (research -> writer -> proofreader)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          DAYS: ${{ github.event.inputs.days || '7' }}
-        run: python scripts/generate_drafts.py
+          DAYS: ${{ github.event.inputs.days || '1' }}
+          TZ: "Asia/Tokyo"
+        run: python scripts/pdca_manager.py
 
-      - name: Commit drafts
+      - name: Commit drafts & research
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add drafts/
+          git add drafts/ research/
           if git diff --cached --quiet; then
             echo "No new drafts to commit"
           else
-            git commit -m "chore(drafts): auto-generate weekly drafts"
+            git commit -m "chore(drafts): auto-generate daily 4-slot drafts"
             git push
           fi

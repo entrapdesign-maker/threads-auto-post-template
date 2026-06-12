@@ -1,8 +1,10 @@
 """
-予約時刻に到達したdraftをThreadsに投稿する。
-- 毎時0分にcronで起動 → 該当日のJSONを開き、scheduled_at <= now かつ posted=False なら投稿。
+予約時刻に到達したdraftをThreadsに投稿する (自動投稿エージェント)。
+- 毎時0分にcronで起動 → 該当日のJSONを開き、各枠(slot)で scheduled_at <= now かつ posted=False なら投稿。
+- 1日4枠 (07:00/12:00/19:00/21:00) × 各5ツリー(メイン+返信4) に対応。
 - メイン投稿 + replies をツリー形式で投稿。
-- 投稿成功後、JSONに posted=True と post_ids を書き戻す。
+- 投稿成功後、その枠に posted=True と post_ids を書き戻す。
+- 旧スキーマ(トップレベル main/replies)のJSONも後方互換で読める。
 
 環境変数:
   THREADS_USER_ID     : Threads APIのユーザーID
@@ -13,7 +15,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -21,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
+
+from agents import common as agents_common
 
 JST = timezone(timedelta(hours=9))
 ROOT = Path(__file__).resolve().parent.parent
@@ -84,11 +87,11 @@ class ThreadsClient:
 
 
 def load_draft(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return agents_common.load_draft(path)
 
 
 def save_draft(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    agents_common.save_draft(path, data)
 
 
 def parse_iso_jst(s: str) -> datetime:
@@ -113,6 +116,19 @@ def find_target_drafts(now: datetime, force_date: str) -> list[Path]:
     return candidates
 
 
+def post_tree(client: ThreadsClient, post: dict) -> list[str]:
+    """1枠(メイン+返信)をツリー投稿し、post_ids を返す。"""
+    post_ids: list[str] = []
+    main_id = client.post_text(post["main"])
+    post_ids.append(main_id)
+    parent = main_id
+    for reply in post.get("replies", []):
+        rid = client.post_text(reply, reply_to_id=parent)
+        post_ids.append(rid)
+        parent = rid
+    return post_ids
+
+
 def main() -> int:
     user_id = os.environ.get("THREADS_USER_ID")
     token = os.environ.get("THREADS_ACCESS_TOKEN")
@@ -129,29 +145,30 @@ def main() -> int:
 
     client = ThreadsClient(user_id, token)
     for path in targets:
-        data = load_draft(path)
-        if data.get("posted"):
-            continue
-        scheduled = parse_iso_jst(data["scheduled_at"])
-        if not force_date and now < scheduled:
-            print(f"not yet: {path.name} scheduled at {scheduled.isoformat()}")
-            continue
+        date_str = path.stem
+        data = agents_common.normalize_draft(load_draft(path), date_str)
+        changed = False
 
-        print(f"posting: {path.name}")
-        post_ids: list[str] = []
-        main_id = client.post_text(data["main"])
-        post_ids.append(main_id)
-        parent = main_id
-        for reply in data.get("replies", []):
-            rid = client.post_text(reply, reply_to_id=parent)
-            post_ids.append(rid)
-            parent = rid
+        for post in data.get("posts", []):
+            if post.get("posted"):
+                continue
+            if not post.get("main"):
+                continue  # 生成に失敗した空き枠はスキップ
+            scheduled = parse_iso_jst(post["scheduled_at"])
+            if not force_date and now < scheduled:
+                print(f"not yet: {path.name} [{post.get('slot')}] scheduled at {scheduled.isoformat()}")
+                continue
 
-        data["posted"] = True
-        data["post_ids"] = post_ids
-        data["posted_at"] = datetime.now(JST).isoformat(timespec="seconds")
-        save_draft(path, data)
-        print(f"posted: {path.name} -> {post_ids}")
+            print(f"posting: {path.name} [{post.get('slot')}]")
+            post_ids = post_tree(client, post)
+            post["posted"] = True
+            post["post_ids"] = post_ids
+            post["posted_at"] = datetime.now(JST).isoformat(timespec="seconds")
+            changed = True
+            print(f"posted: {path.name} [{post.get('slot')}] -> {post_ids}")
+
+        if changed:
+            save_draft(path, data)
 
     return 0
 
