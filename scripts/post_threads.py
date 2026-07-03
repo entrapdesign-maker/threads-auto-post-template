@@ -116,17 +116,30 @@ def find_target_drafts(now: datetime, force_date: str) -> list[Path]:
     return candidates
 
 
-def post_tree(client: ThreadsClient, post: dict) -> list[str]:
-    """1枠(メイン+返信)をツリー投稿し、post_ids を返す。"""
+def post_tree(client: ThreadsClient, post: dict) -> tuple[list[str], bool]:
+    """1枠(メイン+返信)をツリー投稿する。
+
+    メイン投稿は必須。失敗したら例外を送出する(その枠は未投稿のまま)。
+    返信(ツリー化)は best-effort: 1件でも失敗したらそこで打ち切り、
+    それまでに成功した post_ids と replies_ok=False を返す。
+    こうすることで、メインは上がったのに返信の権限エラー等で例外になり、
+    枠が「未投稿」のまま毎時メインを重複投稿してしまう事故を防ぐ。
+    """
     post_ids: list[str] = []
-    main_id = client.post_text(post["main"])
+    main_id = client.post_text(post["main"])  # 失敗時はここで例外 → 枠は未投稿
     post_ids.append(main_id)
     parent = main_id
+    replies_ok = True
     for reply in post.get("replies", []):
-        rid = client.post_text(reply, reply_to_id=parent)
+        try:
+            rid = client.post_text(reply, reply_to_id=parent)
+        except Exception as e:  # 返信は best-effort。失敗しても main は済んでいる
+            print(f"  reply failed (main は投稿済み, 返信は打ち切り): {e}", file=sys.stderr)
+            replies_ok = False
+            break
         post_ids.append(rid)
         parent = rid
-    return post_ids
+    return post_ids, replies_ok
 
 
 def main() -> int:
@@ -160,12 +173,16 @@ def main() -> int:
                 continue
 
             print(f"posting: {path.name} [{post.get('slot')}]")
-            post_ids = post_tree(client, post)
+            post_ids, replies_ok = post_tree(client, post)
+            # メインが上がった時点で posted=True にする。返信が失敗しても
+            # 枠を「投稿済み」にして毎時の重複メイン投稿を防ぐ。
             post["posted"] = True
             post["post_ids"] = post_ids
             post["posted_at"] = datetime.now(JST).isoformat(timespec="seconds")
+            post["replies_ok"] = replies_ok  # 返信が全て上がったか(要再挑戦の判定用)
             changed = True
-            print(f"posted: {path.name} [{post.get('slot')}] -> {post_ids}")
+            status = "posted" if replies_ok else "posted(main only, replies failed)"
+            print(f"{status}: {path.name} [{post.get('slot')}] -> {post_ids}")
 
         if changed:
             save_draft(path, data)

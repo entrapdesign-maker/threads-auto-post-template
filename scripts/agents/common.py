@@ -20,10 +20,21 @@ JST = timezone(timedelta(hours=9))
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
-PROMPTS_DIR = ROOT / "prompts"
-DRAFTS_DIR = ROOT / "drafts"
-RESEARCH_DIR = ROOT / "research"
-INSIGHTS_DIR = ROOT / "insights"
+
+# ACCOUNT 環境変数でアカウントを切り替える。
+# 例: ACCOUNT=side-hustle → accounts/side-hustle/ 以下のプロンプト・ドラフトを使う。
+_ACCOUNT = os.environ.get("ACCOUNT", "").strip()
+if _ACCOUNT:
+    _ACCOUNT_DIR = ROOT / "accounts" / _ACCOUNT
+    PROMPTS_DIR = _ACCOUNT_DIR / "prompts"
+    DRAFTS_DIR = _ACCOUNT_DIR / "drafts"
+    RESEARCH_DIR = _ACCOUNT_DIR / "research"
+    INSIGHTS_DIR = _ACCOUNT_DIR / "insights"
+else:
+    PROMPTS_DIR = ROOT / "prompts"
+    DRAFTS_DIR = ROOT / "drafts"
+    RESEARCH_DIR = ROOT / "research"
+    INSIGHTS_DIR = ROOT / "insights"
 
 # 1日4投稿の枠 (JST)。ここを変えれば投稿時刻が変わる。
 POST_SLOTS = ["07:00", "12:00", "19:00", "21:00"]

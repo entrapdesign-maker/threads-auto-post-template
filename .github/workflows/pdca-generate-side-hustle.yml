@@ -1,0 +1,56 @@
+name: PDCA Generate (side-hustle)
+
+# side-hustle アカウント(ai_lab_6960)用の生成。ACCOUNT=side-hustle で
+# accounts/side-hustle/ 配下のプロンプトを使い、同フォルダに drafts を書き出す。
+# 元アカウント用の pdca-generate.yml とは別枠で走る。
+on:
+  schedule:
+    # 毎日 04:00 JST (= 19:00 UTC)。元アカウント(05:00 JST)と時間をずらし、
+    # Anthropic API のレート上限が重ならないようにする。
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "生成する日数 (デフォルト: 1 = 当日のみ)"
+        required: false
+        default: "1"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run PDCA generate (research -> writer -> proofreader)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACCOUNT: side-hustle
+          DAYS: ${{ github.event.inputs.days || '1' }}
+          TZ: "Asia/Tokyo"
+        run: python scripts/pdca_manager.py
+
+      - name: Commit drafts & research
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add accounts/side-hustle/drafts/ accounts/side-hustle/research/
+          if git diff --cached --quiet; then
+            echo "No new drafts to commit"
+          else
+            git commit -m "chore(side-hustle): auto-generate daily drafts"
+            git push
+          fi
