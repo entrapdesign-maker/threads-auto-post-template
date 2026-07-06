@@ -3,13 +3,12 @@ name: Post Scheduled (side-hustle)
 # side-hustle アカウント(ai_lab_6960)用の投稿。ACCOUNT=side-hustle で
 # accounts/side-hustle/drafts の予約時刻に達した枠を投稿する。
 #
-# ⚠️ 現在は「返信(ツリー化)のAPI権限エラー」が未解決のため、自動スケジュールは
-#    保留(コメントアウト)。手動実行(workflow_dispatch)のみ有効。
-#    返信が通るようになったら、下の schedule の2行のコメントを外せば毎時自動投稿が始まる。
-#    (post_threads.py は返信失敗時もメインを投稿済みにマークするので、重複投稿は起きない)
+# メイン単発で自動投稿を有効化(2026-07-06)。返信(ツリー化)はAPI権限エラーのため
+# 現状スキップされ、メインのみ投稿される。post_threads.py が返信失敗時もメインを
+# 投稿済みにマークするので重複投稿は起きない。返信権限が直ったら自動で5ツリー型に戻る。
 on:
-  # schedule:
-  #   - cron: "0 * * * *"   # JST 毎時0分にチェック。返信が直ったらこの2行を有効化する
+  schedule:
+    - cron: "0 * * * *"   # JST 毎時0分にチェック(予約時刻に達した枠を投稿)
   workflow_dispatch:
     inputs:
       force_date:
