@@ -8,7 +8,10 @@ name: Post Scheduled (side-hustle)
 # 投稿済みにマークするので重複投稿は起きない。返信権限が直ったら自動で5ツリー型に戻る。
 on:
   schedule:
-    - cron: "0 * * * *"   # JST 毎時0分にチェック(予約時刻に達した枠を投稿)
+    # 毎時0分はGitHub側が最も混雑し遅延・スキップされやすいので、混雑を避けた
+    # 分(:08 と :38)に2回チェックする。予約時刻(07/12/19/21時)を多少過ぎても
+    # 次のチェックで拾える。GitHubのschedule自体に数分〜1時間の遅延はあり得る。
+    - cron: "8,38 * * * *"
   workflow_dispatch:
     inputs:
       force_date:
@@ -41,6 +44,7 @@ jobs:
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID_SIDEHUSTLE }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN_SIDEHUSTLE }}
           ACCOUNT: side-hustle
+          EXPECTED_USERNAME: ai_lab_6960
           FORCE_DATE: ${{ github.event.inputs.force_date || '' }}
           TZ: "Asia/Tokyo"
         run: python scripts/post_threads.py

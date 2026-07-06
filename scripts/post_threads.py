@@ -27,7 +27,10 @@ from agents import common as agents_common
 
 JST = timezone(timedelta(hours=9))
 ROOT = Path(__file__).resolve().parent.parent
-DRAFTS_DIR = ROOT / "drafts"
+# ドラフトの場所は agents.common に一元化する。common は ACCOUNT 環境変数を見て
+# accounts/<ACCOUNT>/drafts に切り替える。ここで独自に ROOT/"drafts" を定義すると
+# ACCOUNT を無視して常に元アカウントのドラフトを読んでしまう(過去の誤爆投稿の原因)。
+DRAFTS_DIR = agents_common.DRAFTS_DIR
 API_BASE = "https://graph.threads.net/v1.0"
 
 
@@ -148,6 +151,31 @@ def main() -> int:
     if not user_id or not token:
         print("ERROR: THREADS_USER_ID / THREADS_ACCESS_TOKEN が未設定です", file=sys.stderr)
         return 1
+
+    account = os.environ.get("ACCOUNT", "").strip() or "(default)"
+    print(f"ACCOUNT={account} / DRAFTS_DIR={DRAFTS_DIR}")
+
+    # 安全ガード: トークンの実アカウントを取得してログ表示。EXPECTED_USERNAME が
+    # 指定されていて一致しなければ中止する(ドラフトとトークンの取り違え事故を防ぐ)。
+    expected = os.environ.get("EXPECTED_USERNAME", "").strip()
+    try:
+        me = requests.get(
+            f"{API_BASE}/me",
+            params={"fields": "username", "access_token": token},
+            timeout=30,
+        )
+        me.raise_for_status()
+        actual = me.json().get("username", "")
+        print(f"token account = @{actual}")
+        if expected and actual != expected:
+            print(
+                f"ERROR: トークンのアカウント(@{actual})が EXPECTED_USERNAME(@{expected})と不一致。"
+                f"投稿を中止します。",
+                file=sys.stderr,
+            )
+            return 1
+    except requests.RequestException as e:
+        print(f"WARN: アカウント確認に失敗(投稿は続行): {e}", file=sys.stderr)
 
     force_date = os.environ.get("FORCE_DATE", "").strip()
     now = datetime.now(JST)
